@@ -195,7 +195,7 @@ with aba1:
         # C7 = PREÇO * (1 - (MARGEM + C11))
         custo_liquido = preco * (1 - (margem_f + total_saida_f))
 
-        # 👉 CUSTO NF
+        # 👉 Valor NF
         if tipo_produto == "Sem ST":
             # Fórmula original (sem ST):
             # C3 = C7 / (1 - C4 - C5*(1 - C4) + C6)
@@ -248,7 +248,7 @@ with aba1:
         st.subheader("🧮 Resultado")
         col_a, col_b = st.columns(2)
         with col_a:
-            st.metric("Custo NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
+            st.metric("Valor NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
             st.metric("Custo Líquido", f"R$ {ultimo_resultado['Custo Líquido R$']:.2f}")
         with col_b:
             st.metric("PMZ", f"R$ {ultimo_resultado['PMZ R$']:.2f}")
@@ -305,7 +305,7 @@ with aba2:
         col3, col4 = st.columns(2)
         with col3:
             custo_nf_input = st.number_input(
-                "CUSTO NF (R$)",
+                "Valor NF (R$)",
                 min_value=0.0,
                 step=0.05,
                 format="%.2f",
@@ -343,7 +343,7 @@ with aba2:
             pis_cofins_saida_f_v = pis_cofins_saida_pct / 100.0
             margem_f_v = margem_pct_v / 100.0
 
-            # 1) CUSTO LÍQUIDO ATUAL (a partir do CUSTO NF informado)
+            # 1) CUSTO LÍQUIDO ATUAL (a partir do Valor NF informado)
             if tipo_produto == "Sem ST":
                 # D = 1 - C4 - C5*(1 - C4) + C6
                 D_v = 1 - icms_entrada_f_v - pis_cofins_entrada_f_v * (1 - icms_entrada_f_v) + despesas_f_v
@@ -372,29 +372,30 @@ with aba2:
                 "Preço de Venda R$": preco_v,
                 "Margem %": margem_pct_v,
                 "Crédito ICMS/ICMS ST %": icms_entrada_pct,
-                "PIS/COFINS ENT (C5) [%]": pis_cofins_entrada_pct,
+                "Crédito PIS/COFINS %": pis_cofins_entrada_pct,
                 "Despesas %": despesas_pct,
                 "Débito ICMS %": icms_saida_pct if tipo_produto == "Sem ST" else 0.0,
                 "Débito PIS/COFINS %": pis_cofins_saida_pct,
-                "CUSTO LÍQUIDO ATUAL (C7) [R$]": custo_liquido_atual,
-                "CUSTO LÍQUIDO OBJ (C7) [R$]": custo_liquido_obj,
+                "Custo Líquido Atual R$": custo_liquido_atual,
+                "Custo Líquido Objetivo R$": custo_liquido_obj,
                 "Imposto Total %": total_saida_f_v * 100,
-                "VERBA (R$)": verba_reais,
-                "VERBA / NF [%]": verba_pct_sobre_nf,
-                "VERBA / PREÇO [%]": verba_pct_sobre_preco,
+                "Verba R$": verba_reais,
+                "Verba % NF": verba_pct_sobre_nf,
+                "Verba % Preço de Venda": verba_pct_sobre_preco,
             }
 
             st.session_state.registros_verba.append(linha_verba)
 
             colv1, colv2 = st.columns(2)
             with colv1:
+                st.metric("Verba necessária (R$)", f"R$ {verba_reais:,.2f}")
+                st.metric("Verba sobre NF (%)", f"{verba_pct_sobre_nf:,.2f}%")
+                st.metric("Verba sobre preço de venda (%)", f"{verba_pct_sobre_preco:,.2f}%")
+            with colv2:
                 st.metric("Custo Líquido atual (C7)", f"R$ {custo_liquido_atual:,.2f}")
                 st.metric("Custo Líquido objetivo (C7 alvo)", f"R$ {custo_liquido_obj:,.2f}")
                 st.metric("Total Imposto de Saída (C11)", f"{total_saida_f_v * 100:,.2f}%")
-            with colv2:
-                st.metric("Verba necessária (R$)", f"R$ {verba_reais:,.2f}")
-                st.metric("Verba sobre NF (%)", f"{verba_pct_sobre_nf:,.2f}%")
-                st.metric("Verba sobre preço (%)", f"{verba_pct_sobre_preco:,.2f}%")
+
 
     # --- Tabela de resultados da ABA 2 ---
     st.subheader("📋 Lista de simulações de verba - Sell In")
@@ -410,16 +411,16 @@ with aba2:
             "Preço de Venda R$": "{:,.2f}",
             "Margem %": "{:,.2f}%",
             "Crédito ICMS/ICMS ST %": "{:,.2f}%",
-            "PIS/COFINS ENT (C5) [%]": "{:,.2f}%",
+            "Crédito PIS/COFINS %": "{:,.2f}%",
             "Despesas %": "{:,.2f}%",
             "Débito ICMS %": "{:,.2f}%",
             "Débito PIS/COFINS %": "{:,.2f}%",
-            "CUSTO LÍQUIDO ATUAL (C7) [R$]": "{:,.2f}",
-            "CUSTO LÍQUIDO OBJ (C7) [R$]": "{:,.2f}",
+            "Custo Líquido Atual R$": "{:,.2f}",
+            "Custo Líquido Objetivo R$": "{:,.2f}",
             "Imposto Total %": "{:,.2f}%",
-            "VERBA (R$)": "{:,.2f}",
-            "VERBA / NF [%]": "{:,.2f}%",
-            "VERBA / PREÇO [%]": "{:,.2f}%",
+            "Verba R$": "{:,.2f}",
+            "Verba % NF": "{:,.2f}%",
+            "Verba % Preço de Venda": "{:,.2f}%",
         }
 
         st.dataframe(df_verba.style.format(format_dict_verba))
