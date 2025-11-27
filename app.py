@@ -142,6 +142,21 @@ with aba1:
     with st.form("form_preco"):
         st.subheader("Dados de entrada – Valor NF")
 
+        # 🔹 Expander com parâmetros fiscais (voltando aquilo que você tinha)
+        with st.expander("👀 Ver parâmetros fiscais", expanded=False):
+            col_inf1, col_inf2 = st.columns(2)
+            with col_inf1:
+                if tipo_produto == "Sem ST":
+                    st.write(f"**Crédito ICMS:** {icms_entrada_pct:.2f}%")
+                else:
+                    st.write(f"**ICMS ST:** {icms_entrada_pct:.2f}%")
+                st.write(f"**Crédito PIS/COFINS:** {pis_cofins_entrada_pct:.2f}%")
+                st.write(f"**Despesas:** {despesas_pct:.2f}%")
+            with col_inf2:
+                st.write(f"**Débito ICMS:** {icms_saida_pct:.2f}%")
+                st.write(f"**Débito PIS/COFINS:** {pis_cofins_saida_pct:.2f}%")
+                st.write(f"**Tipo de tributação:** {tipo_produto}")
+
         col3, col4 = st.columns(2)
         with col3:
             preco = st.number_input(
@@ -191,11 +206,9 @@ with aba1:
             except ZeroDivisionError:
                 custo_nf = float("nan")
         else:
-            # COM ST – usando sua fórmula de custo líquido:
+            # COM ST – usando sua fórmula de custo líquido rearranjada:
             # C7 = NF - ((NF - NF*ICMS_ST)*PIS_COFINS) + (NF*DESPESAS) + (NF*ICMS_ST)
-            # Fazendo a álgebra, isso equivale a:
             # C7 = NF * [ 1 - (1-ICMS_ST)*PIS_COFINS + DESPESAS + ICMS_ST ]
-            # Logo:
             # NF = C7 / [ 1 - (1-ICMS_ST)*PIS_COFINS + DESPESAS + ICMS_ST ]
             try:
                 denom = 1 - (1 - icms_entrada_f) * pis_cofins_entrada_f + despesas_f + icms_entrada_f
@@ -273,6 +286,22 @@ with aba2:
     st.subheader("Dados de entrada – Sell In")
 
     with st.form("form_verba"):
+
+        # 🔹 Expander com parâmetros fiscais também na aba 2
+        with st.expander("👀 Ver parâmetros fiscais", expanded=False):
+            col_inf1b, col_inf2b = st.columns(2)
+            with col_inf1b:
+                if tipo_produto == "Sem ST":
+                    st.write(f"**Crédito ICMS:** {icms_entrada_pct:.2f}%")
+                else:
+                    st.write(f"**ICMS ST:** {icms_entrada_pct:.2f}%")
+                st.write(f"**Crédito PIS/COFINS:** {pis_cofins_entrada_pct:.2f}%")
+                st.write(f"**Despesas:** {despesas_pct:.2f}%")
+            with col_inf2b:
+                st.write(f"**Débito ICMS:** {icms_saida_pct:.2f}%")
+                st.write(f"**Débito PIS/COFINS:** {pis_cofins_saida_pct:.2f}%")
+                st.write(f"**Tipo de tributação:** {tipo_produto}")
+
         col3, col4 = st.columns(2)
         with col3:
             custo_nf_input = st.number_input(
@@ -368,7 +397,7 @@ with aba2:
                 st.metric("Verba sobre preço (%)", f"{verba_pct_sobre_preco:,.2f}%")
 
     # --- Tabela de resultados da ABA 2 ---
-    st.subheader("📋 Lista de simulações de verba – Aba 2")
+    st.subheader("📋 Lista de simulações de verba - Sell In")
 
     if st.session_state.registros_verba:
         df_verba = pd.DataFrame(st.session_state.registros_verba)
