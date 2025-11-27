@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Formação de Preço", layout="centered")
 
-st.title("📊 Simulador de Preços")
+st.set_page_config(page_title="Formação de Preço", layout="centered", page_icon="🧮")
+
+st.title("🧮 Simulador de Preços")
 
 # =========================
 # ESTADO INICIAL
