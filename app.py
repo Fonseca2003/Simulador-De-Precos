@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-
 st.set_page_config(page_title="Formação de Preço", layout="centered", page_icon="🧮")
-
 st.title("🧮 Simulador de Preços")
 
 # =========================
@@ -29,19 +27,14 @@ tipo_produto = st.radio(
         "sendo usado apenas como parâmetro/base (ICMS ST)."
     ),
 )
-st.markdown(
-    """
-    <hr style="margin-top: 0.2rem; margin-bottom: 0.2rem;">
-    """,
-    unsafe_allow_html=True,
-)
+
+st.markdown("<hr style='margin-top: 0.2rem; margin-bottom: 0.2rem;'>", unsafe_allow_html=True)
 
 # =========================
-# PARÂMETROS GERAIS (COMPARTILHADOS ENTRE AS ABAS)
+# PARÂMETROS GERAIS (COMPARTILHADOS)
 # =========================
 st.subheader("⚙️ Parâmetros Gerais")
 
-# Label dinâmico para o campo de ICMS de entrada / ICMS ST
 if tipo_produto == "Sem ST":
     label_icms_entrada = "Crédito ICMS %"
     help_icms_entrada = "ICMS de crédito na entrada. Informe em % (ex.: 18 = 18%)."
@@ -51,15 +44,17 @@ else:
 
 col_g1, col_g2 = st.columns(2)
 with col_g1:
+    # ICMS Entrada / ICMS ST
     st.session_state.icms_entrada_pct = st.number_input(
         label_icms_entrada,
         min_value=0.0,
         step=0.05,
-        value=st.session_state.get("icms_entrada_pct", 18.00),
+        value=st.session_state.get("icms_entrada_pct", 18.0),
         format="%.2f",
         help=help_icms_entrada,
         key="icms_entrada_pct_global",
     )
+    # PIS/COFINS Entrada
     st.session_state.pis_cofins_entrada_pct = st.number_input(
         "Crédito PIS/COFINS %",
         min_value=0.0,
@@ -69,24 +64,13 @@ with col_g1:
         help="Informe em % (ex.: 9,25 = 9,25%).",
         key="pis_cofins_entrada_pct_global",
     )
-    st.session_state.despesas_pct = st.number_input(
-        "Despesas %",
-        min_value=0.0,
-        step=0.05,
-        value=st.session_state.get("despesas_pct", 2.00),
-        format="%.2f",
-        help="Despesas adicionais em %. ",
-        key="despesas_pct_global",
-    )
-
 with col_g2:
-    # Débito ICMS só aparece para produtos sem ST
     if tipo_produto == "Sem ST":
         st.session_state.icms_saida_pct = st.number_input(
             "Débito ICMS %",
             min_value=0.0,
             step=0.05,
-            value=st.session_state.get("icms_saida_pct", 18.00),
+            value=st.session_state.get("icms_saida_pct", 18.0),
             format="%.2f",
             help="Informe em % (ex.: 18 = 18%).",
             key="icms_saida_pct_global",
@@ -97,36 +81,90 @@ with col_g2:
         step=0.05,
         value=st.session_state.get("pis_cofins_saida_pct", 9.25),
         format="%.2f",
-        help="Informe em %. ",
+        help="Informe em % (ex.: 9,25 = 9,25%).",
         key="pis_cofins_saida_pct_global",
     )
 
-# Valores compartilhados usados nas abas
-icms_entrada_pct = st.session_state.icms_entrada_pct
-pis_cofins_entrada_pct = st.session_state.pis_cofins_entrada_pct
-despesas_pct = st.session_state.despesas_pct
-icms_saida_pct = st.session_state.icms_saida_pct if tipo_produto == "Sem ST" else 0.0
-pis_cofins_saida_pct = st.session_state.pis_cofins_saida_pct
 
-st.markdown(
-    """
-    <hr style="margin-top: 0.2rem; margin-bottom: 0.2rem;">
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<style>
+/* Ou, se quiser mover tudo dentro do HorizontalBlock */
+div[data-testid="stHorizontalBlock"] {
+    margin-top: -20px; /* Ajuste conforme necessário */
+}            
+
+/* Ajusta os radios para ficarem próximos do input e deslocados para cima */
+div[data-testid="stHorizontalBlock"] div[role="radiogroup"] {
+    display: flex;
+    gap: 0px; /* reduz espaço entre % e R$ */
+    position: relative;
+    top: -6px; /* desloca para cima */
+}
+
+/* Reduz tamanho da fonte das opções */
+div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label {
+    font-size: 14px !important;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* Ajusta largura do INPUT real para Despesas e IPI */
+input[id*="despesas_val_global"],
+input[id*="ipi_val_global"] {
+    width: 250px !important; /* ajuste conforme necessário */
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# Layout
+col_g3, col_g4, col_g5, col_g6 = st.columns([4, 1, 4, 1])
+
+with col_g3:
+    st.session_state.despesas_val = st.number_input(
+        "Despesas",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("despesas_val", 2.0),
+        format="%.2f",
+        key="despesas_val_global",
+    )
+
+with col_g4:
+    tipo_despesas = st.radio(
+        "",
+        ["%", "R\u00A0$"],  # espaço não separável
+        index=0,
+        horizontal=True,
+        key="tipo_despesas",
+    )
+
+with col_g5:
+    st.session_state.ipi_val = st.number_input(
+        "IPI",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("ipi_val", 0.0),
+        format="%.2f",
+        key="ipi_val_global",
+    )
+
+with col_g6:
+    tipo_ipi = st.radio(
+        "",
+        ["%", "R\u00A0$"],
+        index=0,
+        horizontal=True,
+        key="tipo_ipi",
+    )
 
 # =========================
-# FUNÇÃO AUXILIAR: CALCULAR C11 (TOTAL SAÍDA) CONFORME ST
+# FUNÇÃO AUXILIAR
 # =========================
 def calcular_total_saida(icms_saida_f: float, pis_cofins_saida_f: float, modo_st: str) -> float:
-    """
-    Retorna C11 em fração (0-1).
-    - Sem ST: C11 = C9 + (C10 - (C10*C9))
-    - Com ST: C11 = C10  (apenas PIS/COFINS; ICMS saída não entra como débito)
-    """
     if modo_st == "Sem ST":
         return icms_saida_f + (pis_cofins_saida_f - (pis_cofins_saida_f * icms_saida_f))
-    else:  # "Com ST"
+    else:
         return pis_cofins_saida_f
 
 # =========================
@@ -135,84 +173,53 @@ def calcular_total_saida(icms_saida_f: float, pis_cofins_saida_f: float, modo_st
 aba1, aba2 = st.tabs(["Valor NF", "Sell In"])
 
 # =========================
-# 🧮 ABA 1 – SIMULADOR NF
+# ABA 1 – SIMULADOR NF
 # =========================
 with aba1:
     ultimo_resultado = None
-
     with st.form("form_preco"):
         st.subheader("Dados de entrada – Valor NF")
-
-        # 🔹 Expander com parâmetros fiscais (voltando aquilo que você tinha)
-        with st.expander("👀 Ver parâmetros fiscais", expanded=False):
-            col_inf1, col_inf2 = st.columns(2)
-            with col_inf1:
-                if tipo_produto == "Sem ST":
-                    st.write(f"**Crédito ICMS:** {icms_entrada_pct:.2f}%")
-                else:
-                    st.write(f"**ICMS ST:** {icms_entrada_pct:.2f}%")
-                st.write(f"**Crédito PIS/COFINS:** {pis_cofins_entrada_pct:.2f}%")
-                st.write(f"**Despesas:** {despesas_pct:.2f}%")
-            with col_inf2:
-                st.write(f"**Débito ICMS:** {icms_saida_pct:.2f}%")
-                st.write(f"**Débito PIS/COFINS:** {pis_cofins_saida_pct:.2f}%")
-                st.write(f"**Tipo de tributação:** {tipo_produto}")
-
         col3, col4 = st.columns(2)
         with col3:
-            preco = st.number_input(
-                "Preço De Venda R$",
-                min_value=0.0,
-                step=0.05,
-                format="%.2f",
-                key="preco_aba1",
-            )
+            preco = st.number_input("Preço De Venda R$", min_value=0.0, step=0.05, format="%.2f", key="preco_aba1")
         with col4:
-            margem_pct = st.number_input(
-                "Margem %",
-                min_value=0.0,
-                step=0.05,
-                value=0.00,
-                format="%.2f",
-                help="Margem de lucro em % (ex.: 20 = 20%).",
-                key="margem_pct_aba1",
-            )
-
+            margem_pct = st.number_input("Margem %", min_value=0.0, step=0.05, value=0.0, format="%.2f", key="margem_pct_aba1")
         submitted = st.form_submit_button("Calcular e adicionar à lista")
 
     if submitted:
-        # Converte tudo para fração
-        icms_entrada_f = icms_entrada_pct / 100.0
-        pis_cofins_entrada_f = pis_cofins_entrada_pct / 100.0
-        despesas_f = despesas_pct / 100.0
-        icms_saida_f = icms_saida_pct / 100.0
-        pis_cofins_saida_f = pis_cofins_saida_pct / 100.0
+        icms_entrada_f = st.session_state.icms_entrada_pct / 100.0
+        pis_cofins_entrada_f = st.session_state.pis_cofins_entrada_pct / 100.0
+        icms_saida_f = st.session_state.icms_saida_pct / 100.0 if tipo_produto == "Sem ST" else 0.0
+        pis_cofins_saida_f = st.session_state.pis_cofins_saida_pct / 100.0
         margem_f = margem_pct / 100.0
 
-        # TOTAL SAÍDA conforme tipo de produto
+        # Despesas
+        if tipo_despesas == "%":
+            despesas_f = st.session_state.despesas_val / 100.0
+        else:
+            despesas_f = st.session_state.despesas_val / preco if preco > 0 else 0.0
+
+        # IPI
+        if tipo_ipi == "%":
+            ipi_f = st.session_state.ipi_val / 100.0
+        else:
+            ipi_f = st.session_state.ipi_val / preco if preco > 0 else 0.0
+
+        # Total saída
         total_saida_f = calcular_total_saida(icms_saida_f, pis_cofins_saida_f, tipo_produto)
 
-        # 👉 CUSTO LÍQUIDO (igual para Sem ST e Com ST):
-        # C7 = PREÇO * (1 - (MARGEM + C11))
-        custo_liquido = preco * (1 - (margem_f + total_saida_f))
+        # Custo líquido
+        custo_liquido = preco * (1 - (margem_f + total_saida_f)) - ipi_f * preco
 
-        # 👉 Valor NF
+        # Valor NF
         if tipo_produto == "Sem ST":
-            # Fórmula original (sem ST):
-            # C3 = C7 / (1 - C4 - C5*(1 - C4) + C6)
             try:
-                custo_nf = custo_liquido / (
-                    1 - icms_entrada_f - pis_cofins_entrada_f * (1 - icms_entrada_f) + despesas_f
-                )
+                custo_nf = custo_liquido / (1 - icms_entrada_f - pis_cofins_entrada_f*(1 - icms_entrada_f) + despesas_f)
             except ZeroDivisionError:
                 custo_nf = float("nan")
         else:
-            # COM ST – usando sua fórmula de custo líquido rearranjada:
-            # C7 = NF - ((NF - NF*ICMS_ST)*PIS_COFINS) + (NF*DESPESAS) + (NF*ICMS_ST)
-            # C7 = NF * [ 1 - (1-ICMS_ST)*PIS_COFINS + DESPESAS + ICMS_ST ]
-            # NF = C7 / [ 1 - (1-ICMS_ST)*PIS_COFINS + DESPESAS + ICMS_ST ]
             try:
-                denom = 1 - (1 - icms_entrada_f) * pis_cofins_entrada_f + despesas_f + icms_entrada_f
+                denom = 1 - (1 - icms_entrada_f)*pis_cofins_entrada_f + despesas_f + icms_entrada_f
                 custo_nf = custo_liquido / denom
             except ZeroDivisionError:
                 custo_nf = float("nan")
@@ -223,207 +230,150 @@ with aba1:
         except ZeroDivisionError:
             pmz = float("nan")
 
-        # Guarda registro
+        # Armazena registro
         linha = {
             "Tipo": tipo_produto,
             "Valor NF R$": custo_nf,
-            "Crédito ICMS/ICMS ST %": icms_entrada_pct,
-            "Crédito PIS/COFINS %": pis_cofins_entrada_pct,
-            "Despesas %": despesas_pct,
             "Custo Líquido R$": custo_liquido,
-            "Débito ICMS %": icms_saida_pct if tipo_produto == "Sem ST" else 0.0,
-            "Débito PIS/COFINS %": pis_cofins_saida_pct,
-            "Imposto Total %": total_saida_f * 100,
             "PMZ R$": pmz,
-            "Preço de Venda R$": preco,
+            "Total Imposto %": total_saida_f*100,
             "Margem %": margem_pct,
+            "Despesas": st.session_state.despesas_val,
+            "IPI": st.session_state.ipi_val,
         }
-
         st.session_state.registros.append(linha)
         ultimo_resultado = linha
-
         st.success("Cálculos realizados e linha adicionada à lista!")
 
-    # Mostra o Resultado em destaque
     if ultimo_resultado:
-        st.subheader("🧮 Resultado")
         col_a, col_b = st.columns(2)
         with col_a:
-            st.metric("Valor NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
+            st.metric("Custo NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
             st.metric("Custo Líquido", f"R$ {ultimo_resultado['Custo Líquido R$']:.2f}")
         with col_b:
             st.metric("PMZ", f"R$ {ultimo_resultado['PMZ R$']:.2f}")
-            st.metric("Total Imposto de Saída", f"{ultimo_resultado['Imposto Total %']:.2f}%")
+            st.metric("Total Imposto de Saída", f"{ultimo_resultado['Total Imposto %']:.2f}%")
 
-    # Tabela
     st.subheader("📋 Lista de simulações – Valor NF")
     if st.session_state.registros:
         df = pd.DataFrame(st.session_state.registros)
-
-        # 👇 evita erro de None em formatação
         df = df.fillna(0.0)
-
-        format_dict = {
+        st.dataframe(df.style.format({
             "Valor NF R$": "{:,.2f}",
             "Custo Líquido R$": "{:,.2f}",
             "PMZ R$": "{:,.2f}",
-            "Preço de Venda R$": "{:,.2f}",
-            "Crédito ICMS/ICMS ST %": "{:,.2f}%",
-            "Crédito PIS/COFINS %": "{:,.2f}%",
-            "Despesas %": "{:,.2f}%",
-            "Débito ICMS %": "{:,.2f}%",
-            "Débito PIS/COFINS %": "{:,.2f}%",
-            "Imposto Total %": "{:,.2f}%",
+            "Total Imposto %": "{:,.2f}%",
             "Margem %": "{:,.2f}%",
-        }
-        st.dataframe(df.style.format(format_dict))
+            "Despesas": "{:,.2f}",
+            "IPI": "{:,.2f}",
+        }))
     else:
-        st.info("Nenhuma simulação cadastrada ainda. Preencha o formulário acima para começar.")
+        st.info("Nenhuma simulação cadastrada ainda.")
 
 # =========================
-# 💰 ABA 2 – SELL IN
+# ABA 2 – SELL IN
 # =========================
 with aba2:
     st.subheader("Dados de entrada – Sell In")
-
     with st.form("form_verba"):
-
-        # 🔹 Expander com parâmetros fiscais também na aba 2
-        with st.expander("👀 Ver parâmetros fiscais", expanded=False):
-            col_inf1b, col_inf2b = st.columns(2)
-            with col_inf1b:
-                if tipo_produto == "Sem ST":
-                    st.write(f"**Crédito ICMS:** {icms_entrada_pct:.2f}%")
-                else:
-                    st.write(f"**ICMS ST:** {icms_entrada_pct:.2f}%")
-                st.write(f"**Crédito PIS/COFINS:** {pis_cofins_entrada_pct:.2f}%")
-                st.write(f"**Despesas:** {despesas_pct:.2f}%")
-            with col_inf2b:
-                st.write(f"**Débito ICMS:** {icms_saida_pct:.2f}%")
-                st.write(f"**Débito PIS/COFINS:** {pis_cofins_saida_pct:.2f}%")
-                st.write(f"**Tipo de tributação:** {tipo_produto}")
-
         col3, col4 = st.columns(2)
         with col3:
-            custo_nf_input = st.number_input(
-                "Valor NF (R$)",
-                min_value=0.0,
-                step=0.05,
-                format="%.2f",
-                key="custo_nf_input_aba2",
-            )
-            preco_v = st.number_input(
-                "Preço De Venda R$",
-                min_value=0.0,
-                step=0.05,
-                format="%.2f",
-                key="preco_v_aba2",
-            )
+            custo_nf_input = st.number_input("Valor NF (R$)", min_value=0.0, step=0.05, format="%.2f", key="custo_nf_input_aba2")
+            preco_v = st.number_input("Preço De Venda R$", min_value=0.0, step=0.05, format="%.2f", key="preco_v_aba2")
         with col4:
-            margem_pct_v = st.number_input(
-                "Margem %",
-                min_value=0.0,
-                step=0.05,
-                value=0.00,
-                format="%.2f",
-                help="Margem de lucro desejada em %.",
-                key="margem_pct_v_aba2",
-            )
-
+            margem_pct_v = st.number_input("Margem %", min_value=0.0, step=0.05, value=0.0, format="%.2f", key="margem_pct_v_aba2")
         submitted_verba = st.form_submit_button("Calcular verba necessária")
 
-    if submitted_verba:
-        if preco_v <= 0:
-            st.error("O PREÇO de venda deve ser maior que zero.")
+    if submitted_verba and preco_v > 0:
+        icms_entrada_f_v = st.session_state.icms_entrada_pct / 100.0
+        pis_cofins_entrada_f_v = st.session_state.pis_cofins_entrada_pct / 100.0
+        icms_saida_f_v = st.session_state.icms_saida_pct / 100.0 if tipo_produto == "Sem ST" else 0.0
+        pis_cofins_saida_f_v = st.session_state.pis_cofins_saida_pct / 100.0
+        margem_f_v = margem_pct_v / 100.0
+
+        # Despesas
+        if tipo_despesas == "%":
+            despesas_f_v = st.session_state.despesas_val / 100.0
         else:
-            # Converte para fração
-            icms_entrada_f_v = icms_entrada_pct / 100.0
-            pis_cofins_entrada_f_v = pis_cofins_entrada_pct / 100.0
-            despesas_f_v = despesas_pct / 100.0
-            icms_saida_f_v = icms_saida_pct / 100.0
-            pis_cofins_saida_f_v = pis_cofins_saida_pct / 100.0
-            margem_f_v = margem_pct_v / 100.0
+            despesas_f_v = st.session_state.despesas_val / preco_v if preco_v > 0 else 0.0
 
-            # 1) CUSTO LÍQUIDO ATUAL (a partir do Valor NF informado)
-            if tipo_produto == "Sem ST":
-                # D = 1 - C4 - C5*(1 - C4) + C6
-                D_v = 1 - icms_entrada_f_v - pis_cofins_entrada_f_v * (1 - icms_entrada_f_v) + despesas_f_v
-            else:
-                # Com ST: usando mesma lógica invertida do CL:
-                # C7 = NF * [ 1 - (1-ICMS_ST)*PIS_COFINS + DESPESAS + ICMS_ST ]
-                D_v = 1 - (1 - icms_entrada_f_v) * pis_cofins_entrada_f_v + despesas_f_v + icms_entrada_f_v
+        # IPI
+        if tipo_ipi == "%":
+            ipi_f_v = st.session_state.ipi_val / 100.0
+        else:
+            ipi_f_v = st.session_state.ipi_val / preco_v if preco_v > 0 else 0.0
 
-            custo_liquido_atual = custo_nf_input * D_v
+        # Custo líquido atual
+        if tipo_produto == "Sem ST":
+            D_v = 1 - icms_entrada_f_v - pis_cofins_entrada_f_v*(1 - icms_entrada_f_v) + despesas_f_v
+        else:
+            D_v = 1 - (1 - icms_entrada_f_v)*pis_cofins_entrada_f_v + despesas_f_v + icms_entrada_f_v
 
-            # 2) TOTAL SAÍDA (fração) conforme tipo de produto
-            total_saida_f_v = calcular_total_saida(icms_saida_f_v, pis_cofins_saida_f_v, tipo_produto)
+        custo_liquido_atual = custo_nf_input * D_v - ipi_f_v * custo_nf_input
 
-            # 3) CUSTO LÍQUIDO OBJETIVO
-            custo_liquido_obj = preco_v * (1 - (margem_f_v + total_saida_f_v))
+        # Total saída
+        total_saida_f_v = calcular_total_saida(icms_saida_f_v, pis_cofins_saida_f_v, tipo_produto)
 
-            # 4) VERBA NECESSÁRIA
-            verba_reais = custo_liquido_atual - custo_liquido_obj
+        # Custo líquido objetivo
+        custo_liquido_obj = preco_v * (1 - (margem_f_v + total_saida_f_v)) - ipi_f_v * preco_v
 
-            verba_pct_sobre_nf = (verba_reais / custo_nf_input * 100.0) if custo_nf_input > 0 else float("nan")
-            verba_pct_sobre_preco = (verba_reais / preco_v * 100.0) if preco_v > 0 else float("nan")
+        # Verba necessária
+        verba_reais = custo_liquido_atual - custo_liquido_obj
+        verba_pct_sobre_nf = (verba_reais / custo_nf_input * 100.0) if custo_nf_input > 0 else float("nan")
+        verba_pct_sobre_preco = (verba_reais / preco_v * 100.0) if preco_v > 0 else float("nan")
 
-            linha_verba = {
-                "Tipo": tipo_produto,
-                "Valor NF R$": custo_nf_input,
-                "Preço de Venda R$": preco_v,
-                "Margem %": margem_pct_v,
-                "Crédito ICMS/ICMS ST %": icms_entrada_pct,
-                "Crédito PIS/COFINS %": pis_cofins_entrada_pct,
-                "Despesas %": despesas_pct,
-                "Débito ICMS %": icms_saida_pct if tipo_produto == "Sem ST" else 0.0,
-                "Débito PIS/COFINS %": pis_cofins_saida_pct,
-                "Custo Líquido Atual R$": custo_liquido_atual,
-                "Custo Líquido Objetivo R$": custo_liquido_obj,
-                "Imposto Total %": total_saida_f_v * 100,
-                "Verba R$": verba_reais,
-                "Verba % NF": verba_pct_sobre_nf,
-                "Verba % Preço de Venda": verba_pct_sobre_preco,
-            }
+        linha_verba = {
+            "Tipo": tipo_produto,
+            "Valor NF R$": custo_nf_input,
+            "Preço de Venda R$": preco_v,
+            "Margem %": margem_pct_v,
+            "Crédito ICMS/ICMS ST %": st.session_state.icms_entrada_pct,
+            "Crédito PIS/COFINS %": st.session_state.pis_cofins_entrada_pct,
+            "Despesas": st.session_state.despesas_val,
+            "IPI": st.session_state.ipi_val,
+            "Débito ICMS %": st.session_state.icms_saida_pct if tipo_produto == "Sem ST" else 0.0,
+            "Débito PIS/COFINS %": st.session_state.pis_cofins_saida_pct,
+            "Custo Líquido Atual R$": custo_liquido_atual,
+            "Custo Líquido Objetivo R$": custo_liquido_obj,
+            "Total Imposto %": total_saida_f_v*100,
+            "Verba R$": verba_reais,
+            "Verba % NF": verba_pct_sobre_nf,
+            "Verba % Preço de Venda": verba_pct_sobre_preco,
+        }
 
-            st.session_state.registros_verba.append(linha_verba)
+        st.session_state.registros_verba.append(linha_verba)
 
-            colv1, colv2 = st.columns(2)
-            with colv1:
-                st.metric("Verba necessária (R$)", f"R$ {verba_reais:,.2f}")
-                st.metric("Verba sobre NF (%)", f"{verba_pct_sobre_nf:,.2f}%")
-                st.metric("Verba sobre preço de venda (%)", f"{verba_pct_sobre_preco:,.2f}%")
-            with colv2:
-                st.metric("Custo Líquido atual (C7)", f"R$ {custo_liquido_atual:,.2f}")
-                st.metric("Custo Líquido objetivo (C7 alvo)", f"R$ {custo_liquido_obj:,.2f}")
-                st.metric("Total Imposto de Saída (C11)", f"{total_saida_f_v * 100:,.2f}%")
+        colv1, colv2 = st.columns(2)
+        with colv1:
+            st.metric("Verba necessária (R$)", f"R$ {verba_reais:,.2f}")
+            st.metric("Verba sobre NF (%)", f"{verba_pct_sobre_nf:,.2f}%")
+            st.metric("Verba sobre preço de venda (%)", f"{verba_pct_sobre_preco:,.2f}%")
+        with colv2:
+            st.metric("Custo Líquido atual (C7)", f"R$ {custo_liquido_atual:,.2f}")
+            st.metric("Custo Líquido objetivo (C7 alvo)", f"R$ {custo_liquido_obj:,.2f}")
+            st.metric("Total Imposto de Saída (C11)", f"{total_saida_f_v*100:,.2f}%")
 
-
-    # --- Tabela de resultados da ABA 2 ---
+    # --- Tabela Sell In ---
     st.subheader("📋 Lista de simulações de verba - Sell In")
-
     if st.session_state.registros_verba:
         df_verba = pd.DataFrame(st.session_state.registros_verba)
-
-        # 👇 evita erro de None nas colunas de % quando estiverem zeradas
         df_verba = df_verba.fillna(0.0)
-
-        format_dict_verba = {
+        st.dataframe(df_verba.style.format({
             "Valor NF R$": "{:,.2f}",
             "Preço de Venda R$": "{:,.2f}",
             "Margem %": "{:,.2f}%",
             "Crédito ICMS/ICMS ST %": "{:,.2f}%",
             "Crédito PIS/COFINS %": "{:,.2f}%",
-            "Despesas %": "{:,.2f}%",
+            "Despesas": "{:,.2f}",
+            "IPI": "{:,.2f}",
             "Débito ICMS %": "{:,.2f}%",
             "Débito PIS/COFINS %": "{:,.2f}%",
             "Custo Líquido Atual R$": "{:,.2f}",
             "Custo Líquido Objetivo R$": "{:,.2f}",
-            "Imposto Total %": "{:,.2f}%",
+            "Total Imposto %": "{:,.2f}%",
             "Verba R$": "{:,.2f}",
             "Verba % NF": "{:,.2f}%",
             "Verba % Preço de Venda": "{:,.2f}%",
-        }
-
-        st.dataframe(df_verba.style.format(format_dict_verba))
+        }))
     else:
-        st.info("Nenhuma simulação de verba cadastrada ainda. Preencha o formulário acima para começar.")
+        st.info("Nenhuma simulação de verba cadastrada ainda.")
