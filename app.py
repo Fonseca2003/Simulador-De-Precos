@@ -34,7 +34,7 @@ st.markdown("<hr style='margin-top: 0.2rem; margin-bottom: 0.2rem;'>", unsafe_al
 # PARÂMETROS GERAIS (COMPARTILHADOS)
 # =========================
 st.subheader("⚙️ Parâmetros Gerais")
-
+st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
 if tipo_produto == "Sem ST":
     label_icms_entrada = "Crédito ICMS %"
     help_icms_entrada = "ICMS de crédito na entrada. Informe em % (ex.: 18 = 18%)."
@@ -120,26 +120,8 @@ input[id*="ipi_val_global"] {
 # Layout
 col_g3, col_g4, col_g5, col_g6 = st.columns([4, 1, 4, 1])
 
+
 with col_g3:
-    st.session_state.despesas_val = st.number_input(
-        "Despesas",
-        min_value=0.0,
-        step=0.05,
-        value=st.session_state.get("despesas_val", 2.0),
-        format="%.2f",
-        key="despesas_val_global",
-    )
-
-with col_g4:
-    tipo_despesas = st.radio(
-        "",
-        ["%", "R\u00A0$"],  # espaço não separável
-        index=0,
-        horizontal=True,
-        key="tipo_despesas",
-    )
-
-with col_g5:
     st.session_state.ipi_val = st.number_input(
         "IPI",
         min_value=0.0,
@@ -149,13 +131,32 @@ with col_g5:
         key="ipi_val_global",
     )
 
-with col_g6:
+with col_g4:
     tipo_ipi = st.radio(
         "",
-        ["%", "R\u00A0$"],
+        ["%", "R$"],
         index=0,
         horizontal=True,
         key="tipo_ipi",
+    )
+
+with col_g5:
+    st.session_state.despesas_val = st.number_input(
+        "Despesas",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("despesas_val", 2.0),
+        format="%.2f",
+        key="despesas_val_global",
+    )
+
+with col_g6:
+    tipo_despesas = st.radio(
+        "",
+        ["%", "R$"],  # espaço não separável
+        index=0,
+        horizontal=True,
+        key="tipo_despesas",
     )
 
 # =========================
@@ -176,9 +177,11 @@ aba1, aba2 = st.tabs(["Valor NF", "Sell In"])
 # ABA 1 – SIMULADOR NF
 # =========================
 with aba1:
+    st.subheader("Dados de entrada – Valor NF")
     ultimo_resultado = None
+    
     with st.form("form_preco"):
-        st.subheader("Dados de entrada – Valor NF")
+        st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
         col3, col4 = st.columns(2)
         with col3:
             preco = st.number_input("Preço De Venda R$", min_value=0.0, step=0.05, format="%.2f", key="preco_aba1")
@@ -219,7 +222,7 @@ with aba1:
                 custo_nf = float("nan")
         else:
             try:
-                denom = 1 - (1 - icms_entrada_f)*pis_cofins_entrada_f + despesas_f + icms_entrada_f
+                denom = 1 - pis_cofins_entrada_f + despesas_f + icms_entrada_f
                 custo_nf = custo_liquido / denom
             except ZeroDivisionError:
                 custo_nf = float("nan")
@@ -243,14 +246,17 @@ with aba1:
         }
         st.session_state.registros.append(linha)
         ultimo_resultado = linha
+        
         st.success("Cálculos realizados e linha adicionada à lista!")
 
     if ultimo_resultado:
         col_a, col_b = st.columns(2)
         with col_a:
+            st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
             st.metric("Custo NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
             st.metric("Custo Líquido", f"R$ {ultimo_resultado['Custo Líquido R$']:.2f}")
         with col_b:
+            st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
             st.metric("PMZ", f"R$ {ultimo_resultado['PMZ R$']:.2f}")
             st.metric("Total Imposto de Saída", f"{ultimo_resultado['Total Imposto %']:.2f}%")
 
@@ -276,6 +282,7 @@ with aba1:
 with aba2:
     st.subheader("Dados de entrada – Sell In")
     with st.form("form_verba"):
+        st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
         col3, col4 = st.columns(2)
         with col3:
             custo_nf_input = st.number_input("Valor NF (R$)", min_value=0.0, step=0.05, format="%.2f", key="custo_nf_input_aba2")
