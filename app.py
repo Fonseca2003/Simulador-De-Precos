@@ -260,7 +260,7 @@ with aba1:
             st.metric("PMZ", f"R$ {ultimo_resultado['PMZ R$']:.2f}")
             st.metric("Total Imposto de Saída", f"{ultimo_resultado['Total Imposto %']:.2f}%")
 
-    st.subheader("📋 Lista de simulações – Valor NF")
+    st.subheader("📋 Simulações – Valor NF")
     if st.session_state.registros:
         df = pd.DataFrame(st.session_state.registros)
         df = df.fillna(0.0)
@@ -361,7 +361,7 @@ with aba2:
             st.metric("Total Imposto de Saída (C11)", f"{total_saida_f_v*100:,.2f}%")
 
     # --- Tabela Sell In ---
-    st.subheader("📋 Lista de simulações de verba - Sell In")
+    st.subheader("📋 Simulações - Sell In")
     if st.session_state.registros_verba:
         df_verba = pd.DataFrame(st.session_state.registros_verba)
         df_verba = df_verba.fillna(0.0)
