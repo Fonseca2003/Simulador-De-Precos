@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Formação de Preço", layout="centered", page_icon="🧮")
+icon = Image.open("icon.png")
+
+st.set_page_config(page_title="Formação de Preço", layout="centered", page_icon=icon)
 
 st.markdown("""<style>.titulo-menor {font-size: 30px !important; font-weight: 600; margin-bottom: 0.5rem;}</style>""",unsafe_allow_html=True,)
 
