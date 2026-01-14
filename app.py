@@ -1,715 +1,392 @@
 import streamlit as st
 import pandas as pd
-import math
-import io
-import datetime
 from PIL import Image
 
-# =============================================================================
-# CONFIGURAÇÕES GERAIS
-# =============================================================================
 icon = Image.open("icon.png")
 
-st.set_page_config(
-    page_title="Rateio de Estoque",
-    layout="wide",
-    page_icon=icon
+st.set_page_config(page_title="Formação de Preço", layout="centered", page_icon=icon)
+
+st.markdown("""<style>.titulo-menor {font-size: 30px !important; font-weight: 600; margin-bottom: 0.5rem;}</style>""",unsafe_allow_html=True,)
+
+st.markdown('<h1 class="titulo-menor">🧮 Simulador de Preços</h1>', unsafe_allow_html=True)
+
+# =========================
+# ESTADO INICIAL
+# =========================
+if "registros" not in st.session_state:
+    st.session_state.registros = []
+
+if "registros_verba" not in st.session_state:
+    st.session_state.registros_verba = []
+
+# =========================
+# TIPO DE PRODUTO (ST x SEM ST)
+# =========================
+tipo_produto = st.radio(
+    "Selecione o tipo de tributação:",
+    ["Sem ST", "Com ST"],
+    index=0,
+    horizontal=True,
+    help=(
+        "Sem ST: ICMS de saída entra normalmente no cálculo dos impostos.\n"
+        "Com ST: ICMS de saída não é considerado em C11 (Total Imposto de Saída), "
+        "sendo usado apenas como parâmetro/base (ICMS ST)."
+    ),
 )
 
-col_logo, col_titulo = st.columns([1, 5])
-with col_logo:
-    st.image("logo.png", use_container_width=True)
-with col_titulo:
-    st.title("Rateio de Estoque")
+st.markdown("<hr style='margin-top: 0.2rem; margin-bottom: 0.2rem;'>", unsafe_allow_html=True)
 
-# =============================================================================
-# ESTADO DA SESSÃO
-# =============================================================================
-if "parametros_confirmados" not in st.session_state:
-    st.session_state.parametros_confirmados = False
-if "minimo_saida" not in st.session_state:
-    st.session_state.minimo_saida = 100
-if "dias_estoque_entrada" not in st.session_state:
-    st.session_state.dias_estoque_entrada = 60
-if "minimo_mov" not in st.session_state:
-    st.session_state.minimo_mov = 10
-if "com_pedido" not in st.session_state:
-    st.session_state.com_pedido = True
-if "df_base" not in st.session_state:
-    st.session_state.df_base = None
-if "df_base_tratada" not in st.session_state:
-    st.session_state.df_base_tratada = None
-if "resultado_rateio" not in st.session_state:
-    st.session_state.resultado_rateio = None
+# =========================
+# PARÂMETROS GERAIS (COMPARTILHADOS)
+# =========================
+st.subheader("⚙️ Parâmetros Gerais")
+st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
+if tipo_produto == "Sem ST":
+    label_icms_entrada = "Crédito ICMS %"
+    help_icms_entrada = "ICMS de crédito na entrada. Informe em % (ex.: 18 = 18%)."
+else:
+    label_icms_entrada = "ICMS ST %"
+    help_icms_entrada = "ICMS ST (base para cálculo e recuperação). Informe em %."
 
-# =============================================================================
-# MODELO EXCEL
-# =============================================================================
-def gerar_modelo_excel():
-    colunas = [
-        "Loja", "Código Produto", "Produto", "Embal",
-        "Quantidade Disponível", "Qtd. Pend. Ped.Compra",
-        "Média Vda/Dia", "Cto. Bruto Unitário", "Comprador"
-    ]
-    df_modelo = pd.DataFrame(columns=colunas)
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_modelo.to_excel(writer, sheet_name="Base", index=False)
-    buffer.seek(0)
-    return buffer
-
-# =============================================================================
-# ETAPA 1
-# =============================================================================
-st.header("1️⃣ Baixar Planilha Padrão")
-st.download_button(
-    "📥 Baixar modelo",
-    gerar_modelo_excel(),
-    "Modelo_Base_Transferencias.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-st.markdown("---")
-
-# =============================================================================
-# ETAPA 2 – PARÂMETROS
-# =============================================================================
-st.header("2️⃣ Definir Parâmetros")
-
-c1, c2, c3 = st.columns(3)
-with c1:
-    minimo_saida = st.number_input(
-        "Dias de estoque mínimo (lojas de saída):",
-        min_value=0,
-        value=st.session_state.minimo_saida,
-        step=1
+col_g1, col_g2 = st.columns(2)
+with col_g1:
+    # ICMS Entrada / ICMS ST
+    st.session_state.icms_entrada_pct = st.number_input(
+        label_icms_entrada,
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("icms_entrada_pct", 18.0),
+        format="%.2f",
+        help=help_icms_entrada,
+        key="icms_entrada_pct_global",
     )
-with c2:
-    dias_estoque_entrada = st.number_input(
-        "Dias de estoque alvo (lojas de entrada):",
-        min_value=0,
-        value=st.session_state.dias_estoque_entrada,
-        step=1
+    # PIS/COFINS Entrada
+    st.session_state.pis_cofins_entrada_pct = st.number_input(
+        "Crédito PIS/COFINS %",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("pis_cofins_entrada_pct", 9.25),
+        format="%.2f",
+        help="Informe em % (ex.: 9,25 = 9,25%).",
+        key="pis_cofins_entrada_pct_global",
     )
-with c3:
-    minimo_mov = st.number_input(
-        "Qtd mínima para movimentar:",
-        min_value=0,
-        value=st.session_state.minimo_mov,
-        step=1
-    )
-
-com_pedido = st.checkbox(
-    "Considerar pedido pendente",
-    value=st.session_state.com_pedido
-)
-
-if st.button("✅ Confirmar Parâmetros"):
-    st.session_state.minimo_saida = minimo_saida
-    st.session_state.dias_estoque_entrada = dias_estoque_entrada
-    st.session_state.minimo_mov = minimo_mov
-    st.session_state.com_pedido = com_pedido
-    st.session_state.parametros_confirmados = True
-    st.success("Parâmetros confirmados!")
-
-if not st.session_state.parametros_confirmados:
-    st.stop()
-
-st.markdown("---")
-
-# =============================================================================
-# ETAPA 3 – IMPORTAÇÃO
-# =============================================================================
-st.header("3️⃣ Importar Planilha")
-
-arquivo = st.file_uploader("Selecione o arquivo base (.xlsx):", type=["xlsx"])
-
-if arquivo is not None and st.button("📥 Salvar"):
-    try:
-        with st.spinner("Importando base..."):
-            df_base = pd.read_excel(arquivo, sheet_name="Base")
-
-            for col in ['Quantidade Disponível', 'Qtd. Pend. Ped.Compra', 'Média Vda/Dia']:
-                df_base[col] = pd.to_numeric(df_base[col], errors='coerce').fillna(0)
-
-            df_base['Loja'] = df_base['Loja'].astype(str)
-
-            if 'Comprador' not in df_base.columns:
-                df_base['Comprador'] = 'N/A'
-            if 'Cto. Bruto Unitário' not in df_base.columns:
-                df_base['Cto. Bruto Unitário'] = 0.0
-
-            st.session_state.df_base = df_base
-            st.session_state.df_base_tratada = df_base.copy()
-
-        st.success("Base importada com sucesso!")
-    except Exception as e:
-        st.error(f"Erro ao ler a base: {e}")
-        st.stop()
-
-if st.session_state.df_base_tratada is None:
-    st.stop()
-
-df_base = st.session_state.df_base_tratada.copy()
-st.markdown("---")
-
-# =============================================================================
-# ETAPA 4 – SELECIONAR LOJAS
-# =============================================================================
-st.header("4️⃣ Modalidade e Escolha de Lojas")
-
-modalidade = st.radio(
-    "Modalidade de Transferência:",
-    ["Loja a Loja", "De Todas Para Todas"],
-    horizontal=True
-)
-
-todas_lojas = sorted(df_base['Loja'].dropna().unique().tolist())
-
-col_saida, col_entrada = st.columns(2)
-
-# -------- SAÍDA --------
-with col_saida:
-    st.subheader("Lojas de Saída")
-    lojas_saida = st.multiselect(
-        "Selecione as lojas que irão enviar os produtos:",
-        options=todas_lojas,
-        default=todas_lojas
-    )
-
-# -------- ENTRADA --------
-with col_entrada:
-    st.subheader("Lojas de Entrada")
-
-    if modalidade == "De Todas Para Todas":
-        lojas_entrada = st.multiselect(
-            "Selecione as lojas que irão receber os produtos:",
-            options=todas_lojas,
-            default=todas_lojas
+with col_g2:
+    if tipo_produto == "Sem ST":
+        st.session_state.icms_saida_pct = st.number_input(
+            "Débito ICMS %",
+            min_value=0.0,
+            step=0.05,
+            value=st.session_state.get("icms_saida_pct", 18.0),
+            format="%.2f",
+            help="Informe em % (ex.: 18 = 18%).",
+            key="icms_saida_pct_global",
         )
+    st.session_state.pis_cofins_saida_pct = st.number_input(
+        "Débito PIS/COFINS %",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("pis_cofins_saida_pct", 9.25),
+        format="%.2f",
+        help="Informe em % (ex.: 9,25 = 9,25%).",
+        key="pis_cofins_saida_pct_global",
+    )
+
+
+st.markdown("""
+<style>
+/* Ou, se quiser mover tudo dentro do HorizontalBlock */
+div[data-testid="stHorizontalBlock"] {
+    margin-top: -20px; /* Ajuste conforme necessário */
+}            
+
+/* Ajusta os radios para ficarem próximos do input e deslocados para cima */
+div[data-testid="stHorizontalBlock"] div[role="radiogroup"] {
+    display: flex;
+    gap: 0px; /* reduz espaço entre % e R$ */
+    position: relative;
+    top: -6px; /* desloca para cima */
+}
+
+/* Reduz tamanho da fonte das opções */
+div[data-testid="stHorizontalBlock"] div[role="radiogroup"] label {
+    font-size: 14px !important;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+/* Ajusta largura do INPUT real para Despesas e IPI */
+input[id*="despesas_val_global"],
+input[id*="ipi_val_global"] {
+    width: 250px !important; /* ajuste conforme necessário */
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+# Layout
+col_g3, col_g4, col_g5, col_g6 = st.columns([4, 1, 4, 1])
+
+
+with col_g3:
+    st.session_state.ipi_val = st.number_input(
+        "IPI",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("ipi_val", 0.0),
+        format="%.2f",
+        key="ipi_val_global",
+    )
+
+with col_g4:
+    tipo_ipi = st.radio(
+        "",
+        ["%", "R$"],
+        index=0,
+        horizontal=True,
+        key="tipo_ipi",
+    )
+
+with col_g5:
+    st.session_state.despesas_val = st.number_input(
+        "Despesas",
+        min_value=0.0,
+        step=0.05,
+        value=st.session_state.get("despesas_val", 2.0),
+        format="%.2f",
+        key="despesas_val_global",
+    )
+
+with col_g6:
+    tipo_despesas = st.radio(
+        "",
+        ["%", "R$"],  # espaço não separável
+        index=0,
+        horizontal=True,
+        key="tipo_despesas",
+    )
+
+# =========================
+# FUNÇÃO AUXILIAR
+# =========================
+def calcular_total_saida(icms_saida_f: float, pis_cofins_saida_f: float, modo_st: str) -> float:
+    if modo_st == "Sem ST":
+        return icms_saida_f + (pis_cofins_saida_f - (pis_cofins_saida_f * icms_saida_f))
     else:
-        lojas_entrada = st.multiselect(
-            "Selecione as lojas que irão receber os produtos:",
-            options=[l for l in todas_lojas if l not in lojas_saida],
-            default=[l for l in todas_lojas if l not in lojas_saida]
-        )
+        return pis_cofins_saida_f
 
-df_saida = df_base[df_base["Loja"].isin(lojas_saida)].copy().reset_index(drop=True)
-df_entrada = df_base[df_base["Loja"].isin(lojas_entrada)].copy().reset_index(drop=True)
+# =========================
+# TABS
+# =========================
+aba1, aba2 = st.tabs(["Valor NF", "Sell In"])
 
-# =============================================================================
-# FUNÇÕES AUXILIARES (ORIGINAIS)
-# =============================================================================
-def calcular_liberado_para_transferir(df_saida, minimo_saida, minimo_mov, com_pedido):
-    base_estoque_saida = df_saida['Quantidade Disponível'] - (df_saida['Média Vda/Dia'] * minimo_saida)
-    if com_pedido:
-        base_estoque_saida += df_saida['Qtd. Pend. Ped.Compra']
+# =========================
+# ABA 1 – SIMULADOR NF
+# =========================
+with aba1:
+    st.subheader("Dados de entrada – Valor NF")
+    ultimo_resultado = None
+    
+    with st.form("form_preco"):
+        st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
+        col3, col4 = st.columns(2)
+        with col3:
+            preco = st.number_input("Preço De Venda R$", min_value=0.0, step=0.05, format="%.2f", key="preco_aba1")
+        with col4:
+            margem_pct = st.number_input("Margem %", min_value=0.0, step=0.05, value=0.0, format="%.2f", key="margem_pct_aba1")
+        submitted = st.form_submit_button("Calcular e adicionar à lista")
 
-    df_saida['Liberado Para Transferir'] = base_estoque_saida.apply(
-        lambda x: int(round(x, 0)) if x >= minimo_mov else 0
-    )
-    return df_saida[df_saida['Liberado Para Transferir'] > 0].reset_index(drop=True)
+    if submitted:
+        icms_entrada_f = st.session_state.icms_entrada_pct / 100.0
+        pis_cofins_entrada_f = st.session_state.pis_cofins_entrada_pct / 100.0
+        icms_saida_f = st.session_state.icms_saida_pct / 100.0 if tipo_produto == "Sem ST" else 0.0
+        pis_cofins_saida_f = st.session_state.pis_cofins_saida_pct / 100.0
+        margem_f = margem_pct / 100.0
 
-def calcular_liberado_para_receber(df_entrada, dias_estoque_entrada, minimo_mov, com_pedido):
-    alvo = df_entrada['Média Vda/Dia'] * dias_estoque_entrada
-    necessidade = alvo - df_entrada['Quantidade Disponível']
-    if com_pedido:
-        necessidade -= df_entrada['Qtd. Pend. Ped.Compra']
+        # Despesas
+        if tipo_despesas == "%":
+            despesas_f = st.session_state.despesas_val / 100.0
+        else:
+            despesas_f = st.session_state.despesas_val / preco if preco > 0 else 0.0
 
-    df_entrada['Liberado Para Receber'] = necessidade.apply(
-        lambda x: math.ceil(x) if x >= minimo_mov else 0
-    )
-    df_entrada['Estoque Alvo Desejado'] = alvo
-    return df_entrada[df_entrada['Liberado Para Receber'] > 0].reset_index(drop=True)
+        # IPI
+        if tipo_ipi == "%":
+            ipi_f = st.session_state.ipi_val / 100.0
+        else:
+            ipi_f = st.session_state.ipi_val / preco if preco > 0 else 0.0
 
-# =============================================================================
-# ETAPA 5 – RATEIO (ORIGINAL + BLOQUEIO AUTO)
-# =============================================================================
-st.header("5️⃣ Calcular Transferências")
+        # Total saída
+        total_saida_f = calcular_total_saida(icms_saida_f, pis_cofins_saida_f, tipo_produto)
 
-if st.button("🚀 Calcular Transferências"):
-    with st.spinner("Processando rateio..."):
-        df_saida_proc = calcular_liberado_para_transferir(
-            df_saida,
-            st.session_state.minimo_saida,
-            st.session_state.minimo_mov,
-            st.session_state.com_pedido
-        )
+        # Custo líquido
+        custo_liquido = preco * (1 - (margem_f + total_saida_f)) - ipi_f * preco
 
-        df_entrada_proc = calcular_liberado_para_receber(
-            df_entrada,
-            st.session_state.dias_estoque_entrada,
-            st.session_state.minimo_mov,
-            st.session_state.com_pedido
-        )
+        # Valor NF
+        if tipo_produto == "Sem ST":
+            try:
+                custo_nf = custo_liquido / (1 - icms_entrada_f - pis_cofins_entrada_f*(1 - icms_entrada_f) + despesas_f)
+            except ZeroDivisionError:
+                custo_nf = float("nan")
+        else:
+            try:
+                denom = 1 - pis_cofins_entrada_f + despesas_f + icms_entrada_f
+                custo_nf = custo_liquido / denom
+            except ZeroDivisionError:
+                custo_nf = float("nan")
 
-        resultados = []
+        # PMZ
+        try:
+            pmz = custo_liquido / (1 - total_saida_f)
+        except ZeroDivisionError:
+            pmz = float("nan")
 
-        for produto in df_saida_proc['Código Produto'].unique():
-            lojas_saida_prod = df_saida_proc[
-                df_saida_proc['Código Produto'] == produto
-            ].copy()
+        # Armazena registro
+        linha = {
+            "Tipo": tipo_produto,
+            "Valor NF R$": custo_nf,
+            "Custo Líquido R$": custo_liquido,
+            "PMZ R$": pmz,
+            "Total Imposto %": total_saida_f*100,
+            "Margem %": margem_pct,
+            "Despesas": st.session_state.despesas_val,
+            "IPI": st.session_state.ipi_val,
+        }
+        st.session_state.registros.append(linha)
+        ultimo_resultado = linha
+        
+        st.success("Cálculos realizados e linha adicionada à lista!")
 
-            lojas_entrada_prod = df_entrada_proc[
-                df_entrada_proc['Código Produto'] == produto
-            ].copy()
+    if ultimo_resultado:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
+            st.metric("Custo NF", f"R$ {ultimo_resultado['Valor NF R$']:.2f}")
+            st.metric("Custo Líquido", f"R$ {ultimo_resultado['Custo Líquido R$']:.2f}")
+        with col_b:
+            st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
+            st.metric("PMZ", f"R$ {ultimo_resultado['PMZ R$']:.2f}")
+            st.metric("Total Imposto de Saída", f"{ultimo_resultado['Total Imposto %']:.2f}%")
 
-            if lojas_saida_prod.empty or lojas_entrada_prod.empty:
-                continue
+    st.subheader("📋 Simulações – Valor NF")
+    if st.session_state.registros:
+        df = pd.DataFrame(st.session_state.registros)
+        df = df.fillna(0.0)
+        st.dataframe(df.style.format({
+            "Valor NF R$": "{:,.2f}",
+            "Custo Líquido R$": "{:,.2f}",
+            "PMZ R$": "{:,.2f}",
+            "Total Imposto %": "{:,.2f}%",
+            "Margem %": "{:,.2f}%",
+            "Despesas": "{:,.2f}",
+            "IPI": "{:,.2f}",
+        }))
+    else:
+        st.info("Nenhuma simulação cadastrada ainda.")
 
-            for _, ent in lojas_entrada_prod.iterrows():
-                loja_ent_nome = ent['Loja']
-                qtd_restante = int(ent['Liberado Para Receber'])
+# =========================
+# ABA 2 – SELL IN
+# =========================
+with aba2:
+    st.subheader("Dados de entrada – Sell In")
+    with st.form("form_verba"):
+        st.markdown(""" <style> div[data-testid="stHorizontalBlock"] {margin-top: -20px; }</style>""", unsafe_allow_html=True)
+        col3, col4 = st.columns(2)
+        with col3:
+            custo_nf_input = st.number_input("Valor NF (R$)", min_value=0.0, step=0.05, format="%.2f", key="custo_nf_input_aba2")
+            preco_v = st.number_input("Preço De Venda R$", min_value=0.0, step=0.05, format="%.2f", key="preco_v_aba2")
+        with col4:
+            margem_pct_v = st.number_input("Margem %", min_value=0.0, step=0.05, value=0.0, format="%.2f", key="margem_pct_v_aba2")
+        submitted_verba = st.form_submit_button("Calcular verba necessária")
 
-                if qtd_restante <= 0:
-                    continue
+    if submitted_verba and preco_v > 0:
+        icms_entrada_f_v = st.session_state.icms_entrada_pct / 100.0
+        pis_cofins_entrada_f_v = st.session_state.pis_cofins_entrada_pct / 100.0
+        icms_saida_f_v = st.session_state.icms_saida_pct / 100.0 if tipo_produto == "Sem ST" else 0.0
+        pis_cofins_saida_f_v = st.session_state.pis_cofins_saida_pct / 100.0
+        margem_f_v = margem_pct_v / 100.0
 
-                lojas_saida_ativas = lojas_saida_prod[
-                    lojas_saida_prod['Liberado Para Transferir'] > 0
-                ].copy()
+        # Despesas
+        if tipo_despesas == "%":
+            despesas_f_v = st.session_state.despesas_val / 100.0
+        else:
+            despesas_f_v = st.session_state.despesas_val / preco_v if preco_v > 0 else 0.0
 
-                for sai_idx, sai in lojas_saida_ativas.iterrows():
-                    loja_sai_nome = sai['Loja']
+        # IPI
+        if tipo_ipi == "%":
+            ipi_f_v = st.session_state.ipi_val / 100.0
+        else:
+            ipi_f_v = st.session_state.ipi_val / preco_v if preco_v > 0 else 0.0
 
-                    # 🔒 BLOQUEIO DE AUTO-TRANSFERÊNCIA
-                    if loja_sai_nome == loja_ent_nome:
-                        continue
+        # Custo líquido atual
+        if tipo_produto == "Sem ST":
+            D_v = 1 - icms_entrada_f_v - pis_cofins_entrada_f_v*(1 - icms_entrada_f_v) + despesas_f_v
+        else:
+            D_v = 1 - (1 - icms_entrada_f_v)*pis_cofins_entrada_f_v + despesas_f_v + icms_entrada_f_v
 
-                    qtd_disp_saida = int(sai['Liberado Para Transferir'])
+        custo_liquido_atual = custo_nf_input * D_v - ipi_f_v * custo_nf_input
 
-                    if qtd_restante <= 0:
-                        break
+        # Total saída
+        total_saida_f_v = calcular_total_saida(icms_saida_f_v, pis_cofins_saida_f_v, tipo_produto)
 
-                    qtd = min(qtd_disp_saida, qtd_restante)
+        # Custo líquido objetivo
+        custo_liquido_obj = preco_v * (1 - (margem_f_v + total_saida_f_v)) - ipi_f_v * preco_v
 
-                    if qtd < st.session_state.minimo_mov:
-                        continue
+        # Verba necessária
+        verba_reais = custo_liquido_atual - custo_liquido_obj
+        verba_pct_sobre_nf = (verba_reais / custo_nf_input * 100.0) if custo_nf_input > 0 else float("nan")
+        verba_pct_sobre_preco = (verba_reais / preco_v * 100.0) if preco_v > 0 else float("nan")
 
-                    resultados.append({
-                        'Código Produto': produto,
-                        'Produto': sai['Produto'],
-                        'Embal': sai['Embal'],
-                        'Quantidade Para Transferir': qtd,
-                        'Loja Saída': loja_sai_nome,
-                        'Loja Entrada': loja_ent_nome
-                    })
-
-                    qtd_restante -= qtd
-                    lojas_saida_prod.loc[sai_idx, 'Liberado Para Transferir'] -= qtd
-
-        rateio_ll = pd.DataFrame(resultados)
-
-        # =======================
-        # CÁLCULO DOS VALORES
-        # =======================
-        df_base_local = st.session_state.df_base_tratada.copy()
-
-        map_custo = df_base_local.set_index(
-            ['Loja', 'Código Produto']
-        )['Cto. Bruto Unitário'].to_dict()
-
-        map_comprador = df_base_local.set_index(
-            ['Loja', 'Código Produto']
-        )['Comprador'].to_dict()
-
-        if not rateio_ll.empty:
-            custos = []
-            compradores = []
-            valores = []
-
-            for _, row in rateio_ll.iterrows():
-                loja_sai = row['Loja Saída']
-                cod = row['Código Produto']
-                qtd = row['Quantidade Para Transferir']
-
-                custo_unit = map_custo.get((loja_sai, cod), 0.0)
-                comprador = map_comprador.get((loja_sai, cod), 'N/A')
-
-                custos.append(custo_unit)
-                compradores.append(comprador)
-                valores.append(custo_unit * qtd)
-
-            rateio_ll['Cto. Bruto Unitário'] = custos
-            rateio_ll['Comprador'] = compradores
-            rateio_ll['Valor Transferência'] = valores
-
-        # =======================
-        # RESUMOS GERENCIAIS
-        # =======================
-        df_valor_por_comprador = (
-        rateio_ll.groupby('Comprador', as_index=False)['Valor Transferência']
-            .sum()
-            .rename(columns={'Valor Transferência': 'Valor Total Transferência'})
-        )
-
-        df_valor_por_loja_saida = (
-            rateio_ll.groupby('Loja Saída', as_index=False)['Valor Transferência']
-            .sum()
-            .rename(columns={'Valor Transferência': 'Valor Total Transferência'})
-        )
-
-        df_valor_por_loja_entrada = (
-            rateio_ll.groupby('Loja Entrada', as_index=False)['Valor Transferência']
-            .sum()
-            .rename(columns={'Valor Transferência': 'Valor Total Transferência'})        )
-
-
-        # =======================
-        # PARÂMETROS
-        # =======================
-        df_parametros = pd.DataFrame({
-            'Parâmetro': [
-                'Dias Estoque Mínimo (Saída)',
-                'Dias Estoque Alvo (Entrada)',
-                'Qtd Mínima para Movimentar',
-                'Considera Pedido Pendente',
-                'Modalidade'
-            ],
-            'Valor': [
-                st.session_state.minimo_saida,
-                st.session_state.dias_estoque_entrada,
-                st.session_state.minimo_mov,
-                st.session_state.com_pedido,
-                modalidade
-            ]
-        })
-
-        # =======================
-        # SALVAR RESULTADO FINAL
-        # =======================
-        st.session_state.resultado_rateio = {
-            "df_saida": df_saida_proc,
-            "rateio_ll": rateio_ll,
-            "df_entrada": df_entrada_proc,
-            "df_valor_por_comprador": df_valor_por_comprador,
-            "df_valor_por_loja_saida": df_valor_por_loja_saida,
-            "df_valor_por_loja_entrada": df_valor_por_loja_entrada,
-            "df_parametros": df_parametros
+        linha_verba = {
+            "Tipo": tipo_produto,
+            "Valor NF R$": custo_nf_input,
+            "Preço de Venda R$": preco_v,
+            "Margem %": margem_pct_v,
+            "Crédito ICMS/ICMS ST %": st.session_state.icms_entrada_pct,
+            "Crédito PIS/COFINS %": st.session_state.pis_cofins_entrada_pct,
+            "Despesas": st.session_state.despesas_val,
+            "IPI": st.session_state.ipi_val,
+            "Débito ICMS %": st.session_state.icms_saida_pct if tipo_produto == "Sem ST" else 0.0,
+            "Débito PIS/COFINS %": st.session_state.pis_cofins_saida_pct,
+            "Custo Líquido Atual R$": custo_liquido_atual,
+            "Custo Líquido Objetivo R$": custo_liquido_obj,
+            "Total Imposto %": total_saida_f_v*100,
+            "Verba R$": verba_reais,
+            "Verba % NF": verba_pct_sobre_nf,
+            "Verba % Preço de Venda": verba_pct_sobre_preco,
         }
 
+        st.session_state.registros_verba.append(linha_verba)
 
+        colv1, colv2 = st.columns(2)
+        with colv1:
+            st.metric("Verba necessária (R$)", f"R$ {verba_reais:,.2f}")
+            st.metric("Verba sobre NF (%)", f"{verba_pct_sobre_nf:,.2f}%")
+            st.metric("Verba sobre preço de venda (%)", f"{verba_pct_sobre_preco:,.2f}%")
+        with colv2:
+            st.metric("Custo Líquido atual (C7)", f"R$ {custo_liquido_atual:,.2f}")
+            st.metric("Custo Líquido objetivo (C7 alvo)", f"R$ {custo_liquido_obj:,.2f}")
+            st.metric("Total Imposto de Saída (C11)", f"{total_saida_f_v*100:,.2f}%")
 
-# =============================================================================
-# EXIBIÇÃO DE RESULTADOS E EXPORTAÇÃO
-# =============================================================================
-if st.session_state.resultado_rateio is not None:
-    res = st.session_state.resultado_rateio
-
-    st.header("📝 Resumo")
-
-    if res["rateio_ll"] is not None and not res["rateio_ll"].empty:
-        st.subheader("Rateio Loja a Loja")
-        st.dataframe(res["rateio_ll"].head(100), use_container_width=True, hide_index=True)
-
-    # ============================
-    # Resumos Gerenciais em 3 colunas
-    # ============================
-    df_comp = res["df_valor_por_comprador"].copy()
-    df_loja_saida = res["df_valor_por_loja_saida"].copy()
-    df_loja_entrada = res["df_valor_por_loja_entrada"].copy()
-
-    # --------- Função para adicionar total e formatar moeda ----------
-    def preparar_resumo(df, col_valor, label_total="TOTAL"):
-        if df is None or df.empty:
-            return df
-
-        df = df.copy()
-
-        # calcula total
-        total_valor = df[col_valor].sum()
-
-        # adiciona linha TOTAL
-        linha_total = {}
-        for col in df.columns:
-            if col == col_valor:
-                linha_total[col] = total_valor
-            else:
-                linha_total[col] = label_total
-        df = pd.concat([df, pd.DataFrame([linha_total])], ignore_index=True)
-
-        # formata como moeda
-        df_styled = df.style.format({
-            col_valor: "R$ {:,.2f}".format
-        })
-
-        return df_styled
-
-    df_comp_styled = preparar_resumo(df_comp, "Valor Total Transferência", label_total="TOTAL")
-    df_loja_saida_styled = preparar_resumo(df_loja_saida, "Valor Total Transferência", label_total="TOTAL")
-    df_loja_entrada_styled = preparar_resumo(df_loja_entrada, "Valor Total Transferência", label_total="TOTAL")
-
-    col_res1, col_res2, col_res3 = st.columns(3)
-
-    with col_res1:
-        st.subheader("Resumo por Comprador")
-        if df_comp is not None and not df_comp.empty:
-            st.dataframe(df_comp_styled, use_container_width=True, hide_index=True)
-        else:
-            st.info("Sem dados para compradores.")
-
-    with col_res2:
-        st.subheader("Resumo Saída")
-        if df_loja_saida is not None and not df_loja_saida.empty:
-            st.dataframe(df_loja_saida_styled, use_container_width=True, hide_index=True)
-        else:
-            st.info("Sem dados para lojas de saída.")
-
-    with col_res3:
-        st.subheader("Resumo Entrada")
-        if df_loja_entrada is not None and not df_loja_entrada.empty:
-            st.dataframe(df_loja_entrada_styled, use_container_width=True, hide_index=True)
-        else:
-            st.info("Sem dados para lojas de entrada.")
-
-
-    # Função para exportar Excel final
-    def gerar_excel_saida():
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            workbook = writer.book
-
-            header_format = workbook.add_format({
-                'bold': True,
-                'font_color': 'white',
-                'bg_color': '#00B050',
-                'border': 1,
-                'align': 'center',
-                'valign': 'vcenter'
-            })
-
-            moeda_format = workbook.add_format({'num_format': 'R$ #,##0.00'})
-            total_format = workbook.add_format({'bold': True, 'border': 1})
-            total_moeda_format = workbook.add_format({'bold': True, 'border': 1, 'num_format': 'R$ #,##0.00'})
-
-            def ajustar_largura_colunas(ws, df):
-                for idx, col in enumerate(df.columns):
-                    serie = df[col].astype(str)
-                    max_len = max(
-                        serie.map(len).max() if not serie.empty else 0,
-                        len(str(col)),
-                        len("TOTAL")
-                    ) + 2
-                    ws.set_column(idx, idx, max_len)
-
-            # ---- Gerencial ----
-            df_valor_por_comprador = res["df_valor_por_comprador"]
-            df_valor_por_loja_saida = res["df_valor_por_loja_saida"]
-            df_valor_por_loja_entrada = res["df_valor_por_loja_entrada"]
-            df_parametros = res["df_parametros"]
-
-            ws_resumo = workbook.add_worksheet('Gerencial')
-            linha_atual = 0
-
-            # =========================
-            # Resumo por comprador
-            # =========================
-            ws_resumo.write(linha_atual, 0, "Resumo por Comprador", header_format)
-            ws_resumo.merge_range(linha_atual, 0, linha_atual, 1, "Resumo por Comprador", header_format)
-            linha_atual += 1
-
-            if df_valor_por_comprador is not None and not df_valor_por_comprador.empty:
-                for col_num, col_name in enumerate(df_valor_por_comprador.columns):
-                    ws_resumo.write(linha_atual, col_num, col_name, header_format)
-                linha_atual += 1
-
-                for _, row in df_valor_por_comprador.iterrows():
-                    ws_resumo.write(linha_atual, 0, row['Comprador'])
-                    ws_resumo.write_number(linha_atual, 1, row['Valor Total Transferência'], moeda_format)
-                    linha_atual += 1
-
-                ws_resumo.write(linha_atual, 0, "TOTAL", total_format)
-                total_val_comprador = df_valor_por_comprador['Valor Total Transferência'].sum()
-                ws_resumo.write_number(linha_atual, 1, total_val_comprador, total_moeda_format)
-                linha_atual += 2
-            else:
-                linha_atual += 2
-
-            # =========================
-            # Resumo por loja de saída
-            # =========================
-            ws_resumo.write(linha_atual, 0, "Resumo por Loja de Saída", header_format)
-            ws_resumo.merge_range(linha_atual, 0, linha_atual, 1, "Resumo por Loja de Saída", header_format)
-            linha_atual += 1
-
-            if df_valor_por_loja_saida is not None and not df_valor_por_loja_saida.empty:
-                for col_num, col_name in enumerate(df_valor_por_loja_saida.columns):
-                    ws_resumo.write(linha_atual, col_num, col_name, header_format)
-                linha_atual += 1
-
-                for _, row in df_valor_por_loja_saida.iterrows():
-                    ws_resumo.write(linha_atual, 0, row['Loja Saída'])
-                    ws_resumo.write_number(linha_atual, 1, row['Valor Total Transferência'], moeda_format)
-                    linha_atual += 1
-
-                ws_resumo.write(linha_atual, 0, "TOTAL", total_format)
-                total_val_loja_saida = df_valor_por_loja_saida['Valor Total Transferência'].sum()
-                ws_resumo.write_number(linha_atual, 1, total_val_loja_saida, total_moeda_format)
-                linha_atual += 2
-            else:
-                linha_atual += 2
-
-            # =========================
-            # Resumo por loja de entrada
-            # =========================
-            ws_resumo.write(linha_atual, 0, "Resumo por Loja de Entrada", header_format)
-            ws_resumo.merge_range(linha_atual, 0, linha_atual, 1, "Resumo por Loja de Entrada", header_format)
-            linha_atual += 1
-
-            if df_valor_por_loja_entrada is not None and not df_valor_por_loja_entrada.empty:
-                for col_num, col_name in enumerate(df_valor_por_loja_entrada.columns):
-                    ws_resumo.write(linha_atual, col_num, col_name, header_format)
-                linha_atual += 1
-
-                for _, row in df_valor_por_loja_entrada.iterrows():
-                    ws_resumo.write(linha_atual, 0, row['Loja Entrada'])
-                    ws_resumo.write_number(linha_atual, 1, row['Valor Total Transferência'], moeda_format)
-                    linha_atual += 1
-
-                ws_resumo.write(linha_atual, 0, "TOTAL", total_format)
-                total_val_loja_entrada = df_valor_por_loja_entrada['Valor Total Transferência'].sum()
-                ws_resumo.write_number(linha_atual, 1, total_val_loja_entrada, total_moeda_format)
-                linha_atual += 2
-            else:
-                linha_atual += 2
-
-            # =========================
-            # Parâmetros
-            # =========================
-            ws_resumo.write(linha_atual, 0, "Parâmetros Utilizados", header_format)
-            ws_resumo.merge_range(linha_atual, 0, linha_atual, 1, "Parâmetros Utilizados", header_format)
-            linha_atual += 1
-
-            for col_num, col_name in enumerate(df_parametros.columns):
-                ws_resumo.write(linha_atual, col_num, col_name, header_format)
-            linha_atual += 1
-
-            for _, row in df_parametros.iterrows():
-                ws_resumo.write(linha_atual, 0, str(row['Parâmetro']))
-                ws_resumo.write(linha_atual, 1, str(row['Valor']))
-                linha_atual += 1
-
-            for idx in range(3):
-                ws_resumo.set_column(idx, idx, 30)
-
-            # ---- Rateio Loja a Loja ----
-            rateio_ll = res["rateio_ll"]
-            if rateio_ll is not None and not rateio_ll.empty:
-                rateio_ll.to_excel(writer, sheet_name='Rateio Loja a Loja', index=False)
-                ws_ll = writer.sheets['Rateio Loja a Loja']
-
-                for col_num, value in enumerate(rateio_ll.columns.values):
-                    ws_ll.write(0, col_num, value, header_format)
-
-                if 'Valor Transferência' in rateio_ll.columns:
-                    col_idx_valor = rateio_ll.columns.get_loc('Valor Transferência')
-                    ws_ll.set_column(col_idx_valor, col_idx_valor, 18, moeda_format)
-
-                ajustar_largura_colunas(ws_ll, rateio_ll)
-
-            # ---- Lojas De Saída ----
-            df_saida_diag = res["df_saida"].rename(
-                columns={'Quantidade Disponível': 'Estoque Atual',
-                         'Liberado Para Transferir': 'Liberado Saída (Caixas)'}
-            ).copy()
-
-            # Qtd Transferida por loja/produto (Loja a Loja)
-            df_transferencias_sint = pd.DataFrame()
-            if res["rateio_ll"] is not None and not res["rateio_ll"].empty:
-                tmp_ll = res["rateio_ll"][['Loja Saída', 'Código Produto', 'Quantidade Para Transferir']].copy()
-                tmp_ll = tmp_ll.rename(columns={'Loja Saída': 'Loja'})
-                df_transferencias_sint = pd.concat([df_transferencias_sint, tmp_ll])
-
-            if not df_transferencias_sint.empty:
-                df_transferencias_sint = df_transferencias_sint.groupby(
-                    ['Loja', 'Código Produto'], as_index=False
-                )['Quantidade Para Transferir'].sum()
-                df_transferencias_sint = df_transferencias_sint.rename(columns={'Quantidade Para Transferir': 'Qtd Transferida'})
-                df_saida_diag = pd.merge(
-                    df_saida_diag,
-                    df_transferencias_sint,
-                    on=['Loja', 'Código Produto'],
-                    how='left'
-                )
-            else:
-                df_saida_diag['Qtd Transferida'] = 0
-
-            df_saida_diag['Qtd Transferida'] = df_saida_diag['Qtd Transferida'].fillna(0)
-            df_saida_diag['Estoque Após Transferência'] = df_saida_diag['Estoque Atual'] - df_saida_diag['Qtd Transferida']
-
-            # Dias de estoque atual (antes da transferência)
-            df_saida_diag['Dias Estoque Atual'] = df_saida_diag.apply(
-                lambda row: row['Estoque Atual'] / row['Média Vda/Dia']
-                if row['Média Vda/Dia'] > 0 else None,
-                axis=1
-            )
-
-            # Dias de estoque após transferência
-            df_saida_diag['Dias Estoque Após Transferência'] = df_saida_diag.apply(
-                lambda row: row['Estoque Após Transferência'] / row['Média Vda/Dia']
-                if row['Média Vda/Dia'] > 0 else None,
-                axis=1
-            )
-
-            if 'Produto' in df_saida_diag.columns:
-                df_saida_diag = df_saida_diag[
-                    ['Loja', 'Código Produto', 'Produto', 'Média Vda/Dia',
-                     'Estoque Atual', 'Dias Estoque Atual',
-                     'Qtd. Pend. Ped.Compra',
-                     'Liberado Saída (Caixas)', 'Qtd Transferida',
-                     'Estoque Após Transferência', 'Dias Estoque Após Transferência']
-                ]
-            else:
-                df_saida_diag = df_saida_diag[
-                    ['Loja', 'Código Produto',
-                     'Média Vda/Dia',
-                     'Estoque Atual', 'Dias Estoque Atual',
-                     'Qtd. Pend. Ped.Compra',
-                     'Liberado Saída (Caixas)', 'Qtd Transferida',
-                     'Estoque Após Transferência', 'Dias Estoque Após Transferência']
-                ]
-
-            df_saida_diag.to_excel(writer, sheet_name='Lojas De Saída', index=False)
-            ws_saida_diag = writer.sheets['Lojas De Saída']
-
-            for col_num, value in enumerate(df_saida_diag.columns.values):
-                ws_saida_diag.write(0, col_num, value, header_format)
-
-            ajustar_largura_colunas(ws_saida_diag, df_saida_diag)
-
-            # ---- Lojas De Entrada ----
-            df_entrada_diag = res["df_entrada"]
-            if df_entrada_diag is not None and not df_entrada_diag.empty:
-                df_entrada_diag = df_entrada_diag[['Loja', 'Código Produto', 'Produto',
-                                                   'Média Vda/Dia', 'Quantidade Disponível',
-                                                   'Estoque Alvo Desejado', 'Liberado Para Receber']].copy()
-                df_entrada_diag = df_entrada_diag.rename(
-                    columns={'Quantidade Disponível': 'Estoque Atual',
-                             'Liberado Para Receber': 'Necessidade Líquida (Caixas)'}
-                )
-                df_entrada_diag = df_entrada_diag[
-                    ['Loja', 'Código Produto', 'Produto',
-                     'Média Vda/Dia', 'Estoque Alvo Desejado',
-                     'Estoque Atual', 'Necessidade Líquida (Caixas)']
-                ]
-
-                df_entrada_diag.to_excel(writer, sheet_name='Lojas De Entrada', index=False)
-                ws_ent_diag = writer.sheets['Lojas De Entrada']
-
-                for col_num, value in enumerate(df_entrada_diag.columns.values):
-                    ws_ent_diag.write(0, col_num, value, header_format)
-
-                ajustar_largura_colunas(ws_ent_diag, df_entrada_diag)
-
-        output.seek(0)
-        return output
-
-    excel_saida = gerar_excel_saida()
-    data_atual = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_arquivo = f"Rateio_Loja_a_Loja_{data_atual}.xlsx"
-
-    st.download_button(
-        label="📤 Baixar resultado em Excel",
-        data=excel_saida,
-        file_name=nome_arquivo,
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # --- Tabela Sell In ---
+    st.subheader("📋 Simulações - Sell In")
+    if st.session_state.registros_verba:
+        df_verba = pd.DataFrame(st.session_state.registros_verba)
+        df_verba = df_verba.fillna(0.0)
+        st.dataframe(df_verba.style.format({
+            "Valor NF R$": "{:,.2f}",
+            "Preço de Venda R$": "{:,.2f}",
+            "Margem %": "{:,.2f}%",
+            "Crédito ICMS/ICMS ST %": "{:,.2f}%",
+            "Crédito PIS/COFINS %": "{:,.2f}%",
+            "Despesas": "{:,.2f}",
+            "IPI": "{:,.2f}",
+            "Débito ICMS %": "{:,.2f}%",
+            "Débito PIS/COFINS %": "{:,.2f}%",
+            "Custo Líquido Atual R$": "{:,.2f}",
+            "Custo Líquido Objetivo R$": "{:,.2f}",
+            "Total Imposto %": "{:,.2f}%",
+            "Verba R$": "{:,.2f}",
+            "Verba % NF": "{:,.2f}%",
+            "Verba % Preço de Venda": "{:,.2f}%",
+        }))
+    else:
+        st.info("Nenhuma simulação de verba cadastrada ainda.")
